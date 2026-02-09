@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/Users/subhodeep/venv/bin/python3
 '''
 script for multidimensional hyper ellipsoid stt
 \n
@@ -164,13 +164,31 @@ class STT_Solver():
         Returns:
             List of Z3 constraints: a{i}_min <= a{i}(t) <= a{i}_max
         """
+
         for t in np.arange(self._start, self._finish + self._step, self._step):
-            gamma_t = self.gammas(t)
-            self.solver.add(gamma_t[2] < 0.1)
             for key, value in enumerate(self.an_exp(t)):
                 a_min = self.axis_range_values[f'a{key + 1}_min']
                 a_max = self.axis_range_values[f'a{key + 1}_max']
                 self.solver.add(z3.And(self.an_exp(t)[value] >= a_min, self.an_exp(t)[value] <= a_max))
+
+        """
+        Enforces hyper-ellipsoid eccentricity constraints:
+            0 < a_i <= a0  (for all i > 0)
+            and ordered ratios: (a_i / a0) is non-decreasing
+        """
+        # a_lengths = [self.An_dict[f'a{i}'][0] for i in range(1, self.dimension)]
+        # print("CHECK: ", a_lengths)
+        # a0 = a_lengths[0]  # largest axis (major axis)
+
+        # # Ensure all other axes are positive and <= a0
+        # for ai in a_lengths[1:]:
+        #     self.solver.add(z3.And(ai > 0, ai <= a0))
+
+        # # Ensure (ai / a0) are in non-decreasing order
+        # for i in range(2, len(a_lengths)):
+        #     num1 = a_lengths[i-1]
+        #     num2 = a_lengths[i]
+        #     self.solver.add((num1 / a0) <= (num2 / a0))
 
     def plot_for_nD(self, C_fin):
         n = self.dimension
@@ -228,33 +246,33 @@ class STT_Solver():
         print("range: ", T_range, "\nstart: ", self.getStart(), "\nfinish: ", self.getFinish(), "\nstep: ", self._step)
 
         #--------------------- 3D Projection ---------------------#
-        # all_points = []
-        # dim = self.dimension
-        # fig = plt.figure()
-        # ax = fig.add_subplot(111, projection='3d')
-        # if dim == 2:
-        #     plt.gca().set_aspect('equal')
-        #     plt.title("2D Ellipsoid Boundary")
-        # elif dim == 3:
-        #     ax.set_title("3D Ellipsoid Boundary")
-        # else:
-        #     ax.set_title(f"{dim}D Ellipsoid (First 3D Projection)")
+        all_points = []
+        dim = self.dimension
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        if dim == 2:
+            plt.gca().set_aspect('equal')
+            plt.title("2D Ellipsoid Boundary")
+        elif dim == 3:
+            ax.set_title("3D Ellipsoid Boundary")
+        else:
+            ax.set_title(f"{dim}D Ellipsoid (First 3D Projection)")
 
-        # t_values = np.arange(self._start, self._finish, self._step)
-        # for t in t_values:
-        #     axis_lengths = [self.an_exp_real(t)[f'a{dim+1}'] for dim in range(self.dimension)]
-        #     center = self.real_gammas(t, self.C_solved)
-        #     points = self.generate_ellipsoid_points_real(axis_lengths, center, step_deg=15)
-        #     all_points.append(points)
+        t_values = np.arange(self._start, self._finish, self._step)
+        for t in t_values:
+            axis_lengths = [self.an_exp_real(t)[f'a{dim+1}'] for dim in range(self.dimension)]
+            center = self.real_gammas(t, self.C_solved)
+            points = self.generate_ellipsoid_points_real(axis_lengths, center, step_deg=15)
+            all_points.append(points)
 
-        # for point_dict in all_points:
-        #     self.visualize_real(point_dict, ax)
+        for point_dict in all_points:
+            self.visualize_real(point_dict, ax)
 
-        # for i in self.obstacles:
-        #     ax.add_collection3d(Poly3DCollection(self.faces(i), facecolors='red', edgecolors='r', alpha=0.25))
+        for i in self.obstacles:
+            ax.add_collection3d(Poly3DCollection(self.faces(i), facecolors='red', edgecolors='r', alpha=0.25))
 
-        # for i in self.setpoints:
-        #     ax.add_collection3d(Poly3DCollection(self.faces(i), facecolors='green', edgecolors='green', alpha=0.25))
+        for i in self.setpoints:
+            ax.add_collection3d(Poly3DCollection(self.faces(i), facecolors='green', edgecolors='green', alpha=0.25))
 
     def find_solution(self):
         '''method to plot the tubes'''
@@ -320,24 +338,38 @@ class STT_Solver():
         - filename: output CSV file name
         """
         filename='coefficients.csv'
+        # Prepare header
         header = ["Tube Coefficients"] + ["Value"] + list(an_dict.keys())
+
+        # Determine max number of rows needed
         num_rows = max(len(C_list), max(len(v) for v in an_dict.values()))
 
         first_column = []
-        first_column.append([f'C_x{dim+1},{j}' for dim in range(self.dimension) for j in range(self.degree + 1)])
+        if self.dimension == 1:
+            first_column.append([f'C_x{dim+1},{j}' for dim in range(self.dimension) for j in range(self.degree + 1)])
+        elif self.dimension == 2:
+            first_column.append([f'C_x{dim+1},{j}' for dim in range(self.dimension) for j in range(self.degree + 1)])
+        elif self.dimension == 3:
+            first_column.append([f'C_x{dim+1},{j}' for dim in range(self.dimension) for j in range(self.degree + 1)])
 
+        # Prepare rows
         rows = []
         for i in range(num_rows):
             row = []
+            # 0th column: C_x/y
             row.append(first_column[0][i] if i < len(C_list) else "")
+            # First column: C_list value or empty
             row.append(C_list[i] if i < len(C_list) else "")
+            # Remaining columns: values from each a{i}, or empty if out of range
             for key in an_dict:
                 vals = an_dict[key]
                 row.append(vals[i] if i < len(vals) else "")
             rows.append(row)
 
+        # After building `rows` and `header`
         print(tabulate(rows, headers=header, tablefmt='grid'))
 
+        # Write to CSV
         with open(filename, mode='a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(header)
@@ -368,6 +400,7 @@ class STT_Solver():
     def setAll(self):
         all_points = self.setpoints + self.obstacles
 
+        # Initialize lists for each dimension's lower and upper bounds
         coord_lowers = {f'dim{i}_min': [] for i in range(self.dimension)}
         coord_uppers = {f'dim{i}_max': [] for i in range(self.dimension)}
 
@@ -381,10 +414,12 @@ class STT_Solver():
             t1.append(point[2 * self.dimension])
             t2.append(point[2 * self.dimension + 1])
 
+        # Set coordinate bounds
         for i in range(self.dimension):
             setattr(self, f'set_dim{i}_start', min(coord_lowers[f'dim{i}_min']))
             setattr(self, f'set_dim{i}_finish', max(coord_uppers[f'dim{i}_max']))
 
+        # Set time bounds
         self.setStart(min(t1))
         self.setFinish(max(t2))
         self.setRange(int((self.getFinish() - self.getStart() + self._step) / self._step))
@@ -493,7 +528,7 @@ class STT_Solver():
 
         for thetas in theta_grid:
             u = self.generate_u_thetas_real(thetas)
-            x = A @ u + center
+            x = A @ u + center # Ellipsoid point
             points.append(x)
 
         return np.array(points)
@@ -506,7 +541,7 @@ class STT_Solver():
         if dim == 2:
             plt.plot(points[:,0], points[:,1], 'o', markersize=2)
         elif dim == 3:
-            ax.scatter(points[:,0], points[:,1], points[:,2], s=2)
+            ax.scatter(points[:,0], points[:,1], points[:,2], s=2, color='blue')
         else:
             # For n > 3, show first 3 dims as 3D projection
             ax.scatter(points[:,0], points[:,1], points[:,2], s=2)
@@ -528,72 +563,53 @@ def reach(solver, *args):
     Total args = 2 * dimension + 2.
     Constraint: The ellipsoid must be fully contained within the box [x1, x2] x [y1, y2] x ...
     """
-    start = time.time()
+    start = time.time() # Assuming start is defined here for timing
     dim = solver.dimension
     assert len(args) == 2 * dim + 2, f"Expected {2*dim+2} arguments, got {len(args)}"
-    bounds_flat = args[:-2]
+    bounds_flat = args[:-2]  # all spatial bounds
     t1, t2 = args[-2], args[-1]
     solver.setpoints.append(list(args))
 
+    # Convert bounds into [(min, max), (min, max), ...] for each dimension
     bounds = [(bounds_flat[i], bounds_flat[i + 1]) for i in range(0, 2 * dim, 2)]
 
     t_values = np.arange(t1, t2, solver._step)
-    theta_grid = solver.sample_theta_grid(step_deg=90)
+    theta_grid = solver.sample_theta_grid(step_deg=15)
     all_constraints = []
 
     for t in t_values:
         gamma_t = solver.gammas(t)
-
+        
+        # 1. Constraint for the center point (gamma)
         gamma_constraints = []
         for d in range(dim):
             lower, upper = bounds[d]
+            # Must satisfy: lower < gamma_d < upper for ALL dimensions d
             gamma_constraints.append(z3.And(gamma_t[d] > lower, gamma_t[d] < upper))
-
+        
+        # Combine all dimensional constraints for the center point into a single z3.And
         all_constraints.append(z3.And(gamma_constraints))
 
+        # 2. Constraint for sampled points on the ellipsoid boundary
         for thetas in theta_grid:
-            u = solver.generate_u_thetas(thetas)
+            u = solver.generate_u_thetas(thetas)  # numerical vector for unit sphere
             boundary_point_constraints = []
             
+            # The coordinates of a boundary point P are P_d = a_d * u_d + gamma_d
             for d in range(dim):
                 lower, upper = bounds[d]
+                # P_d expression: a_{d+1} is used because 'a' indexing starts at 1 in solver.an_exp
                 P_d = solver.an_exp(t)[f'a{d+1}'] * u[d] + gamma_t[d]
-
+                
+                # Must satisfy: lower < P_d < upper for ALL dimensions d for this point P
                 boundary_point_constraints.append(z3.And(P_d > lower, P_d < upper))
 
+            # Combine all dimensional constraints for this boundary point into a single z3.And
             all_constraints.append(z3.And(boundary_point_constraints))
 
     print("Added Reach Constraints: ", solver.setpoints)
     end = time.time()
     solver.displayTime(start, end)
-    return all_constraints
-
-
-# def reach(solver, *args):
-    dim = solver.dimension
-    bounds_flat = args[:-2]
-    t1, t2 = args[-2], args[-1]
-    solver.setpoints.append(list(args))
-
-    bounds = [(bounds_flat[i], bounds_flat[i + 1]) for i in range(0, 2 * dim, 2)]
-    t_values = np.arange(t1, t2, solver._step)
-    all_constraints = []
-
-    for t in t_values:
-        gamma_t = solver.gammas(t)
-        # Get the symbolic radii for each dimension at time t
-        radii = solver.an_exp(t) 
-
-        for d in range(dim):
-            lower, upper = bounds[d]
-            radius_d = radii[f'a{d+1}']
-            center_d = gamma_t[d]
-
-            # Algebraic containment: Center +/- Radius must be within bounds
-            all_constraints.append(center_d - radius_d >= lower)
-            all_constraints.append(center_d + radius_d <= upper)
-
-    print(f"Added Algebraic Reach Constraints for {len(t_values)} time steps")
     return all_constraints
 
 def avoid(solver, *args):
@@ -603,318 +619,136 @@ def avoid(solver, *args):
     Constraint: The ellipsoid must NOT overlap with the box [x1, x2] x [y1, y2] x ...
     (Note: The standard way is that NO part of the path is within the obstacle set.)
     """
-    start = time.time()
+    start = time.time() # Assuming start is defined here for timing
     dim = solver.dimension
     assert len(args) == 2 * dim + 2, f"Expected {2*dim+2} arguments, got {len(args)}"
-    bounds_flat = args[:-2]
+    bounds_flat = args[:-2]  # all spatial bounds
     t1, t2 = args[-2], args[-1]
     solver.obstacles.append(list(args))
 
+    # Convert bounds into [(min, max), (min, max), ...] for each dimension
     bounds = [(bounds_flat[i], bounds_flat[i + 1]) for i in range(0, 2 * dim, 2)]
 
     t_values = np.arange(t1, t2, solver._step)
-    theta_grid = solver.sample_theta_grid(step_deg=180)
+    theta_grid = solver.sample_theta_grid(step_deg=15)
     all_constraints = []
 
     for t in t_values:
         gamma_t = solver.gammas(t)
 
+        # 1. Constraint for the center point (gamma)
         gamma_constraints = []
         for d in range(dim):
             lower, upper = bounds[d]
+            # Must satisfy: gamma_d < lower OR gamma_d > upper for AT LEAST ONE dimension d
             gamma_constraints.append(z3.Or(gamma_t[d] < lower, gamma_t[d] > upper))
 
+        # Combine dimensional checks with z3.Or: The center is outside the box if it fails 
+        # containment in at least one dimension.
         all_constraints.append(z3.Or(gamma_constraints))
 
+        # 2. Constraint for sampled points on the ellipsoid boundary
         for thetas in theta_grid:
-            u = solver.generate_u_thetas(thetas)
+            u = solver.generate_u_thetas(thetas)  # numerical vector for unit sphere
             boundary_point_constraints = []
 
+            # The coordinates of a boundary point P are P_d = a_d * u_d + gamma_d
             for d in range(dim):
                 lower, upper = bounds[d]
+                # P_d expression: a_{d+1} is used because 'a' indexing starts at 1 in solver.an_exp
                 P_d = solver.an_exp(t)[f'a{d+1}'] * u[d] + gamma_t[d]
-
+                
+                # Must satisfy: P_d < lower OR P_d > upper for AT LEAST ONE dimension d
                 boundary_point_constraints.append(z3.Or(P_d < lower, P_d > upper))
 
+            # Combine dimensional checks with z3.Or: The boundary point is outside the box if it fails 
+            # containment in at least one dimension.
             all_constraints.append(z3.Or(boundary_point_constraints))
 
-    for constraints in all_constraints:
-        solver.solver.add(constraints)
-    # print("Added Avoid Constraints: ", solver.obstacles)
-    # end = time.time()
-    # solver.displayTime(start, end)
-    # return all_constraints
+    print("Added Avoid Constraints: ", solver.obstacles)
+    end = time.time()
+    solver.displayTime(start, end)
+    return all_constraints
 
-# def real_gammas(t, C_fin):
-#         '''method to calculate tube equations'''
-#         real_tubes = np.zeros(3)
-#         degree = int((len(C_fin) / (3)) - 1)
+def real_gammas(t, C_fin):
+        '''method to calculate tube equations'''
+        real_tubes = np.zeros(3)
+        degree = int((len(C_fin) / (3)) - 1)
 
-#         for i in range(3):
-#             power = 0
-#             for j in range(degree + 1):
-#                 real_tubes[i] += ((C_fin[j + i * (degree + 1)]) * (t ** power))
-#                 power += 1
-#         return real_tubes
+        for i in range(3):
+            power = 0
+            for j in range(degree + 1): #each tube eq has {degree+1} terms
+                real_tubes[i] += ((C_fin[j + i * (degree + 1)]) * (t ** power))
+                power += 1
+        return real_tubes
 
-# def real_gamma_dot(t, C_fin):
-#     '''method to calculate tube equations'''
-#     real_tubes = np.zeros(3)
-#     degree = int((len(C_fin) / (3)) - 1)
+def real_gamma_dot(t, C_fin):
+    '''method to calculate tube equations'''
+    real_tubes = np.zeros(3)
+    degree = int((len(C_fin) / (3)) - 1)
 
-#     for i in range(3):
-#         power = 0
-#         for j in range(degree + 1):
-#             if power < 1:
-#                 real_tubes[i] += 0
-#                 power += 1
-#             else:
-#                 real_tubes[i] += power * ((C_fin[j + i * (degree + 1)]) * (t ** (power - 1)))
-#                 power += 1
-#     return real_tubes
-
-# def tube_plotter(C_array):
-#     any_empty = any(t[0] is None or (hasattr(t[0], '__len__') and len(t[0]) == 0) for t in C_array)
-
-#     if not any_empty:
-#         fig, axs = plt.subplots(3, 1, figsize=(8, 8), constrained_layout=True)
-#         ax, bx, cx= axs
-
-#         for tube in C_array:
-#             step = 0.1
-#             start = tube[1]
-#             end = tube[2]
-#             time_range = int((end - start + step)/step)
-
-#             x = np.zeros(time_range)
-#             y = np.zeros(time_range)
-#             z = np.zeros(time_range)
-
-#             gd_x = np.zeros(time_range)
-#             gd_y = np.zeros(time_range)
-#             gd_z = np.zeros(time_range)
-
-#             for i in range(time_range):
-#                 tube_gamma = real_gammas(start + i * step, tube[0])
-#                 x[i] = tube_gamma[0]
-#                 y[i] = tube_gamma[1]
-#                 z[i] = tube_gamma[2]
-
-#                 tube_gamma_dot = real_gamma_dot(start + i * step, tube[0])
-#                 gd_x[i] = tube_gamma_dot[0]
-#                 gd_y[i] = tube_gamma_dot[1]
-#                 gd_z[i] = tube_gamma_dot[2]
-
-#             t = np.linspace(start, end, time_range)
-#             print("range: ", time_range, "\nstart: ", start, "\nfinish: ", end, "\nstep: ", step)
-
-#             ax.plot(t, x)
-#             bx.plot(t, y)
-#             cx.plot(t, z)
-
-#         plt.show()
-
-def real_gammas(t, C_fin, dim, degree):
-    '''Generalized method to calculate tube equations for n dimensions'''
-    real_tubes = np.zeros(dim)
-    for i in range(dim):
-        power = 0
-        for j in range(degree + 1):
-            # Indexing: i*(degree+1) gets us to the start of the coefficients for dimension i
-            real_tubes[i] += ((C_fin[j + i * (degree + 1)]) * (t ** power))
-            power += 1
-    return real_tubes
-
-def real_gamma_dot(t, C_fin, dim, degree):
-    '''Generalized method to calculate tube velocities for n dimensions'''
-    real_tubes = np.zeros(dim)
-    for i in range(dim):
+    for i in range(3):
         power = 0
         for j in range(degree + 1):
             if power < 1:
                 real_tubes[i] += 0
+                power += 1
             else:
                 real_tubes[i] += power * ((C_fin[j + i * (degree + 1)]) * (t ** (power - 1)))
-            power += 1
+                power += 1
     return real_tubes
 
-def tube_plotter(C_array, dim=7):
-    """
-    Generalized plotter that automatically detects the polynomial degree 
-    for each individual tube in the array.
-    """
-    # Check if array has data
-    if not C_array or C_array[0][0] is None:
-        print("No data to plot.")
-        return
+def tube_plotter(C_array):
+    any_empty = any(t[0] is None or (hasattr(t[0], '__len__') and len(t[0]) == 0) for t in C_array)
 
-    # Create subplots for n dimensions
-    fig, axs = plt.subplots(dim, 1, figsize=(10, 2 * dim), constrained_layout=True)
-    
-    # Ensure axs is iterable even if there is only 1 dimension
-    if dim == 1:
-        axs = [axs]
+    if not any_empty:
+        fig, axs = plt.subplots(3, 1, figsize=(8, 8), constrained_layout=True)
+        ax, bx, cx= axs
 
-    for tube_idx, tube in enumerate(C_array):
-        coeffs = tube[0]
-        start = tube[1]
-        end = tube[2]
+        for tube in C_array:
+            step = 0.1
+            start = tube[1]
+            end = tube[2]
+            time_range = int((end - start + step)/step)
 
-        # --- NEW: Calculate degree for THIS specific tube ---
-        # coeffs length = dim * (degree + 1)
-        num_coeffs = len(coeffs)
-        if num_coeffs % dim != 0:
-            print(f"Error: Tube {tube_idx} coefficients ({num_coeffs}) "
-                  f"not divisible by dimension ({dim})")
-            continue
+            x = np.zeros(time_range)
+            y = np.zeros(time_range)
+            z = np.zeros(time_range)
 
-        current_degree = int((num_coeffs / dim) - 1)
-        print(f"Tube {tube_idx}: Detected polynomial degree = {current_degree}")
-        # ----------------------------------------------------
+            gd_x = np.zeros(time_range)
+            gd_y = np.zeros(time_range)
+            gd_z = np.zeros(time_range)
 
-        step = 0.05 
-        t_values = np.arange(start, end + step, step)
+            for i in range(time_range):
+                tube_gamma = real_gammas(start + i * step, tube[0])
+                x[i] = tube_gamma[0]
+                y[i] = tube_gamma[1]
+                z[i] = tube_gamma[2]
 
-        # Initialize storage: coords[dimension][time_step]
-        coords = [[] for _ in range(dim)]
+                tube_gamma_dot = real_gamma_dot(start + i * step, tube[0])
+                gd_x[i] = tube_gamma_dot[0]
+                gd_y[i] = tube_gamma_dot[1]
+                gd_z[i] = tube_gamma_dot[2]
 
-        for t in t_values:
-            # Pass the detected degree to the calculator
-            current_pos = real_gammas(t, coeffs, dim, current_degree)
-            for d in range(dim):
-                coords[d].append(current_pos[d])
+            t = np.linspace(start, end, time_range)
+            print("range: ", time_range, "\nstart: ", start, "\nfinish: ", end, "\nstep: ", step)
 
-        # Plot each dimension
-        for d in range(dim):
-            label = f"Tube {tube_idx} (Deg {current_degree})"
-            axs[d].plot(t_values, coords[d], label=label)
-            axs[d].set_ylabel(f"Joint {d+1} (rad)")
-            axs[d].grid(True, linestyle='--', alpha=0.6)
-            if d == 0:
-                axs[d].set_title(f"7-DOF Manipulator Joint Trajectories")
-            if d == dim - 1:
-                axs[d].set_xlabel("Time (s)")
-            axs[d].legend(loc='upper right', fontsize='small')
+            ax.plot(t, x)
+            bx.plot(t, y)
+            cx.plot(t, z)
 
-    plt.show()
+        plt.show()
 
-def load_forbidden_configs(filename='forbidden_joint_configs.csv'):
-    forbidden_list = []
-    
-    try:
-        with open(filename, mode='r') as file:
-            reader = csv.reader(file)
-            
-            # Skip the header row (q1, q2, ..., q7)
-            next(reader)
-            
-            # Iterate through rows and convert strings to floats
-            for row in reader:
-                # Convert the list of strings to a list of floats
-                joint_config = [float(val) for val in row]
-                forbidden_list.append(joint_config)
-                
-        print(f"Successfully loaded {len(forbidden_list)} configurations.")
-    except FileNotFoundError:
-        print(f"Error: The file {filename} was not found.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        
-    return forbidden_list
-
-_tube_loaded = False
-_cached_tubes = []
-_tube_filename = "/home/focaslab/ros2_ws/src/STT-for-manipulators/coefficients.csv"
-
-HARD_CODED_TIMESTAMPS = [
-    (0, 7),
-    (7, 13),
-    (13, 24)
-]
-
-
-def load_tube_coefficients():
-    global _tube_loaded, _cached_tubes
-
-    if not _tube_loaded:
-        try:
-            with open(_tube_filename, "r") as file:
-                for line in file:
-                    line = line.strip()
-                    if not line:
-                        continue
-
-                    if "Tube Coefficients" in line:
-                        _cached_tubes.append([])
-                        continue
-
-                    if not _cached_tubes:
-                        continue
-
-                    delimiter_pos = line.find('",')
-                    if delimiter_pos != -1:
-                        value_start = delimiter_pos + 2
-                        next_comma = line.find(",", value_start)
-
-                        if next_comma != -1:
-                            value_str = line[value_start:next_comma]
-                        else:
-                            value_str = line[value_start:]
-
-                        try:
-                            if value_str:
-                                _cached_tubes[-1].append(float(value_str))
-                        except ValueError:
-                            pass
-
-            _tube_loaded = True
-
-        except OSError:
-            print(f"Error: Could not open tube file: [{_tube_filename}]")
-            _tube_loaded = True
-            return []
-
-    # ---- Apply hard-coded timestamps ----
-    tubes_with_time = []
-
-    for i, tube in enumerate(_cached_tubes):
-        if i < len(HARD_CODED_TIMESTAMPS):
-            start_time, end_time = HARD_CODED_TIMESTAMPS[i]
-        else:
-            # Fallback if there are more tubes than timestamps
-            start_time, end_time = None, None
-
-        tubes_with_time.append([tube, start_time, end_time])
-
-    return tubes_with_time
-
-
-
-# --- Usage ---
-O_constraints_list = load_forbidden_configs('forbidden_joint_configs.csv')
 
 start = time.time()
 
-#----------------------------------------------------------------------------#
-#---------------------------------- TUBE 1 ----------------------------------#
-solver1 = STT_Solver(3, 7, 0.5, [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002])
 
-S_constraints_list = reach(solver1, 0.000000,  0.020000,    #    0
-                                   -0.785411, -0.765411,    # - 45
-                                    0.000000,  0.020000,    #    0
-                                   -2.356229, -2.336229,    # -135
-                                    0.000000,  0.020000,    #    0
-                                    1.570824,  1.590824,    #   90
-                                    0.785411,  0.805411,    #   45
-                                    0, 1)
-T1_constraints_list = reach(solver1, 0.000000, 0.020000,    #    0
-                                     0.610865, 0.630865,    #   35
-                                     0.000000, 0.020000,    #    0
-                                    -2.007130,-1.987130,    # -115
-                                     0.000000, 0.020000,    #    0
-                                     2.617990, 2.637990,    #  150
-                                     0.785411, 0.805411,    #   45
-                                     6, 7)
+solver1 = STT_Solver(4, 3, 0.3, [1.0, 1.0], [1.0, 1.0], [1.0, 1.0])
+
+S_constraints_list = reach(solver1, -1, 2, -1, 2, 1, 4, 0, 1)
+T1_constraints_list = reach(solver1, 9, 12, 6, 9, 6, 9, 7, 8)
+T2_constraints_list = reach(solver1, 12, 15, 12, 15, 12, 15, 14, 15)
+O_constraints_list = avoid(solver1, 6, 9, 6, 11, 0, 15, 0, 15)
 
 for S in S_constraints_list:
     solver1.solver.add(S)
@@ -922,113 +756,11 @@ for S in S_constraints_list:
 for T1 in T1_constraints_list:
     solver1.solver.add(T1)
 
+for T2 in T2_constraints_list:
+    solver1.solver.add(T2)
+
 for O in O_constraints_list:
-    avoid(solver1, O[0], O[0] + 0.02, 
-                    O[1], O[1] + 0.02, 
-                    O[2], O[2] + 0.02, 
-                    O[3], O[3] + 0.02, 
-                    O[4], O[4] + 0.02, 
-                    O[5], O[5] + 0.02, 
-                    O[6], O[6] + 0.02, 
-                    0.0, 7.0)
-print("Added Avoid Constraints")
+    solver1.solver.add(O)
 
 tube1 = solver1.find_solution()
 
-# #----------------------------------------------------------------------------#
-# #---------------------------------- TUBE 2 ----------------------------------#
-solver2 = STT_Solver(3, 7, 0.1, [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002])
-
-T1_constraints_list = reach(solver2, 0.000000, 0.020000,    #    0
-                                     0.610865, 0.630865,    #   35
-                                     0.000000, 0.020000,    #    0
-                                    -2.007130,-1.987130,    # -115
-                                     0.000000, 0.020000,    #    0
-                                     2.617990, 2.637990,    #  150
-                                     0.785411, 0.805411,    #   45
-                                     6, 7)
-T2_constraints_list = reach(solver2,-0.785411,-0.765411,    # - 45
-                                     0.610865, 0.630865,    #   35
-                                     0.000000, 0.020000,    #    0
-                                    -2.007130,-1.987130,    # -115
-                                     0.000000, 0.020000,    #    0
-                                     2.617990, 2.637990,    #  150
-                                     0.000000, 0.020000,    #    0
-                                     12, 13)
-
-# for T1 in T1_constraints_list:
-#     solver2.solver.add(T1)
-
-for T2 in T2_constraints_list:
-    solver2.solver.add(T2)
-
-for O in O_constraints_list:
-    avoid(solver2, O[0], O[0] + 0.02, 
-                    O[1], O[1] + 0.02, 
-                    O[2], O[2] + 0.02, 
-                    O[3], O[3] + 0.02, 
-                    O[4], O[4] + 0.02, 
-                    O[5], O[5] + 0.02, 
-                    O[6], O[6] + 0.02, 
-                    6.0, 13.0)
-print("Added Avoid Constraints")
-
-solver2.join_constraint(tube1, solver1, 7)
-tube2 = solver2.find_solution()
-
-# #----------------------------------------------------------------------------#
-# #---------------------------------- TUBE 3 ----------------------------------#
-solver3 = STT_Solver(3, 7, 0.5, [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002], [0.002, 0.002])
-
-T2_constraints_list = reach(solver3,-0.785411,-0.765411,    # - 45
-                                     0.610865, 0.630865,    #   35
-                                     0.000000, 0.020000,    #    0
-                                    -2.007130,-1.987130,    # -115
-                                     0.000000, 0.020000,    #    0
-                                     2.617990, 2.637990,    #  150
-                                     0.000000, 0.020000,    #    0
-                                     12, 13)
-
-T3_constraints_list = reach(solver3, 0.785411, 0.805411,    #   45
-                                     0.610865, 0.630865,    #   35
-                                     0.000000, 0.020000,    #    0
-                                    -2.007130,-1.987130,    # -115
-                                     0.000000, 0.020000,    #    0
-                                     2.617990, 2.637990,    #  150
-                                     1.570800, 1.590800,    #   90
-                                     23, 24)
-
-# for T2 in T2_constraints_list:
-#     solver3.solver.add(T2)
-
-for T3 in T3_constraints_list:
-    solver3.solver.add(T3)
-
-for O in O_constraints_list:
-    avoid(solver3, O[0], O[0] + 0.02, 
-                    O[1], O[1] + 0.02, 
-                    O[2], O[2] + 0.02, 
-                    O[3], O[3] + 0.02, 
-                    O[4], O[4] + 0.02, 
-                    O[5], O[5] + 0.02, 
-                    O[6], O[6] + 0.02, 
-                    12.0, 24.0)
-print("Added Avoid Constraints")
-
-solver3.join_constraint(tube2, solver2, 13)
-tube3 = solver3.find_solution()
-
-# #----------------------------------------------------------------------------#
-# #----------------------------------------------------------------------------#
-
-tubes = [[tube1, 0, 7],
-         [tube2, 7, 13],
-         [tube3, 13, 24]
-        ]
-
-print(f"Time taken:{(time.time() - start)/60} minutes")
-
-tube_plotter(tubes)
-
-
-# tube_plotter(load_tube_coefficients())
