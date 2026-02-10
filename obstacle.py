@@ -63,7 +63,7 @@ class FrankaFR3Kinematics:
                 y_min <= ee_pos[1] <= y_max and 
                 z_min <= ee_pos[2] <= z_max)
 
-    def get_obstacle_joint_space(self, obstacle_bounds, resolution=3, q_seed=None):
+    def get_obstacle_joint_space(self, obstacle_bounds, res_x=3, res_y=3, res_z=3, q_seed=None):
         """
         Samples the rectangular volume and returns list of joint configurations 
         that would put the end-effector inside the obstacle.
@@ -71,9 +71,9 @@ class FrankaFR3Kinematics:
         if q_seed is None:
             q_seed = np.zeros(7)
             
-        x_range = np.linspace(*obstacle_bounds['x'], resolution)
-        y_range = np.linspace(*obstacle_bounds['y'], resolution)
-        z_range = np.linspace(*obstacle_bounds['z'], resolution)
+        x_range = np.linspace(*obstacle_bounds['x'], res_x)
+        y_range = np.linspace(*obstacle_bounds['y'], res_y)
+        z_range = np.linspace(*obstacle_bounds['z'], res_z)
         
         forbidden_configs = []
         
@@ -94,43 +94,96 @@ fr3 = FrankaFR3Kinematics()
 
 # Define a rectangular obstacle (Task Space)
 # Example: A box in front of the robot
+# obs = {
+#     'x': ( 0.3,  0.7), 
+#     'y': (-0.3, -0.1), 
+#     'z': ( 0.0,  0.3)
+# }
 obs = {
-    'x': (-0.8, 0.8), 
-    'y': (-0.8, 0.8), 
-    'z': ( 0.0, 0.1)
+    'x': ( 0.3,  0.7), 
+    'y': ( 0.1,  0.3), 
+    'z': ( 0.0,  0.3)
 }
 
-# 1. Check if specific joint points are in collision
-points = {
-    "H" : np.array([ 0.000000, -0.785411,  0.000000, -2.356229,  0.000000,  1.570824,  0.785411]),
-    "T1": np.array([ 0.000000,  0.610865,  0.000000, -2.007130,  0.000000,  2.617990,  0.785411]),
-    "T2": np.array([-0.785411,  0.610865,  0.000000, -2.007130,  0.000000,  2.617990,  0.000000]),
-    "T3": np.array([ 0.785411,  0.610865,  0.000000, -2.007130,  0.000000,  2.617990,  1.570800])
-}
+# # 1. Check if specific joint points are in collision
+# points = {
+#     "H" : np.array([ 0.000000, -0.785411,  0.000000, -2.356229,  0.000000,  1.570824,  0.785411]),
+#     "T1": np.array([ 0.000000,  0.610865,  0.000000, -2.007130,  0.000000,  2.617990,  0.785411]),
+#     "T2": np.array([-0.785411,  0.610865,  0.000000, -2.007130,  0.000000,  2.617990,  0.000000]),
+#     "T3": np.array([ 0.785411,  0.610865,  0.000000, -2.007130,  0.000000,  2.617990,  1.570800])
+# }
 
-print("Collision Check:")
-for name, q in points.items():
-    collision = fr3.is_in_collision(q, obs)
-    print(f"Point {name}: {'COLLISION' if collision else 'SAFE'}")
+# print("Collision Check:")
+# for name, q in points.items():
+#     collision = fr3.is_in_collision(q, obs)
+#     print(f"Point {name}: {'COLLISION' if collision else 'SAFE'}")
 
-# 2. Get all joint space points corresponding to the obstacle volume
-# resolution=3 means 3x3x3 = 27 samples within the box
-forbidden_q_list = fr3.get_obstacle_joint_space(obs, resolution=5, q_seed=points["H"])
+# # 2. Get all joint space points corresponding to the obstacle volume
+# # resolution=3 means 3x3x3 = 27 samples within the box
+# forbidden_q_list = fr3.get_obstacle_joint_space(obs, res_x=5, res_y=5, res_z=30, q_seed=points["H"])
 
-print(f"\nFound {len(forbidden_q_list)} forbidden joint configurations.")
-if forbidden_q_list:
-    print("Example Forbidden Joint Config (First Sample):")
-    print(np.round(forbidden_q_list[0], 4))
+# print(f"\nFound {len(forbidden_q_list)} forbidden joint configurations.")
+# if forbidden_q_list:
+#     print("Example Forbidden Joint Config (First Sample):")
+#     print(np.round(forbidden_q_list[0], 4))
 
-# --- CSV SAVING SNIPPET ---
-csv_filename = 'forbidden_joint_configs.csv'
-header = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7']
+# # --- CSV SAVING SNIPPET ---
+# csv_filename = 'O2.csv'
+# header = ['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7']
 
-try:
-    with open(csv_filename, mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(header)      # Write column names
-        writer.writerows(forbidden_q_list) # Write all joint configurations
-    print(f"Successfully saved {len(forbidden_q_list)} configurations to {csv_filename}")
-except Exception as e:
-    print(f"Failed to save CSV: {e}")
+# try:
+#     with open(csv_filename, mode='w', newline='') as file:
+#         writer = csv.writer(file)
+#         writer.writerow(header)      # Write column names
+#         writer.writerows(forbidden_q_list) # Write all joint configurations
+#     print(f"Successfully saved {len(forbidden_q_list)} configurations to {csv_filename}")
+# except Exception as e:
+#     print(f"Failed to save CSV: {e}")
+
+import csv
+import matplotlib.pyplot as plt
+
+# -------- Read joint angles from CSV --------
+csv_file = "obstacles.csv"
+
+joint_trajectories = []
+with open(csv_file, newline='') as f:
+    reader = csv.DictReader(f)
+    for row in reader:
+        q = np.array([
+            float(row['q1']),
+            float(row['q2']),
+            float(row['q3']),
+            float(row['q4']),
+            float(row['q5']),
+            float(row['q6']),
+            float(row['q7'])
+        ])
+        joint_trajectories.append(q)
+
+joint_trajectories = np.array(joint_trajectories)
+
+# -------- Compute EE positions --------
+ee_positions = np.array([
+    fr3.forward_kinematics(q)[:3, 3]
+    for q in joint_trajectories
+])
+
+# -------- Plot EE positions as points only --------
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+
+ax.scatter(
+    ee_positions[:, 0],
+    ee_positions[:, 1],
+    ee_positions[:, 2],
+    s=10
+)
+
+ax.set_xlabel("X (m)")
+ax.set_ylabel("Y (m)")
+ax.set_zlabel("Z (m)")
+ax.set_title("Raw End-Effector Positions (from obstacle.csv)")
+ax.grid(True)
+
+plt.show()

@@ -290,11 +290,11 @@ class STT_Solver():
                     self.an_solved[key] = solved_coeffs
 
                 self.store_csv(self.C_solved, self.an_solved)
-                self.plot_for_nD(self.C_solved)
+                # self.plot_for_nD(self.C_solved)
                 # self.print_equation(self.C_solved)
                 end = time.time()
                 self.displayTime(start, end)
-                plt.show(block=True)
+                # plt.show(block=True)
 
             else:
                 print("No solution found.")
@@ -549,7 +549,7 @@ def reach(solver, *args):
             lower, upper = bounds[d]
             gamma_constraints.append(z3.And(gamma_t[d] > lower, gamma_t[d] < upper))
 
-        all_constraints.append(z3.And(gamma_constraints))
+        all_constraints.append(gamma_constraints)
 
         for thetas in theta_grid:
             u = solver.generate_u_thetas(thetas)
@@ -561,7 +561,7 @@ def reach(solver, *args):
 
                 boundary_point_constraints.append(z3.And(P_d > lower, P_d < upper))
 
-            all_constraints.append(z3.And(boundary_point_constraints))
+        all_constraints.append(boundary_point_constraints)
 
     print("Added Reach Constraints: ", solver.setpoints)
     end = time.time()
@@ -624,7 +624,7 @@ def avoid(solver, *args):
             lower, upper = bounds[d]
             gamma_constraints.append(z3.Or(gamma_t[d] < lower, gamma_t[d] > upper))
 
-        all_constraints.append(z3.Or(gamma_constraints))
+        all_constraints.append(gamma_constraints)
 
         for thetas in theta_grid:
             u = solver.generate_u_thetas(thetas)
@@ -636,7 +636,7 @@ def avoid(solver, *args):
 
                 boundary_point_constraints.append(z3.Or(P_d < lower, P_d > upper))
 
-            all_constraints.append(z3.Or(boundary_point_constraints))
+        all_constraints.append(boundary_point_constraints)
 
     for constraints in all_constraints:
         solver.solver.add(constraints)
@@ -891,7 +891,7 @@ def load_tube_coefficients():
 
 
 # --- Usage ---
-O_constraints_list = load_forbidden_configs('forbidden_joint_configs.csv')
+O_constraints_list = load_forbidden_configs('obstacles.csv')
 
 start = time.time()
 
@@ -922,6 +922,7 @@ for S in S_constraints_list:
 for T1 in T1_constraints_list:
     solver1.solver.add(T1)
 
+start0 = time.time()
 for O in O_constraints_list:
     avoid(solver1, O[0], O[0] + 0.02, 
                     O[1], O[1] + 0.02, 
@@ -932,6 +933,7 @@ for O in O_constraints_list:
                     O[6], O[6] + 0.02, 
                     0.0, 7.0)
 print("Added Avoid Constraints")
+print(f"Time taken:{(time.time() - start0)/60} minutes")
 
 tube1 = solver1.find_solution()
 
@@ -962,6 +964,7 @@ T2_constraints_list = reach(solver2,-0.785411,-0.765411,    # - 45
 for T2 in T2_constraints_list:
     solver2.solver.add(T2)
 
+start0 = time.time()
 for O in O_constraints_list:
     avoid(solver2, O[0], O[0] + 0.02, 
                     O[1], O[1] + 0.02, 
@@ -972,6 +975,7 @@ for O in O_constraints_list:
                     O[6], O[6] + 0.02, 
                     6.0, 13.0)
 print("Added Avoid Constraints")
+print(f"Time taken:{(time.time() - start)/60} minutes")
 
 solver2.join_constraint(tube1, solver1, 7)
 tube2 = solver2.find_solution()
@@ -1004,6 +1008,7 @@ T3_constraints_list = reach(solver3, 0.785411, 0.805411,    #   45
 for T3 in T3_constraints_list:
     solver3.solver.add(T3)
 
+start0 = time.time()
 for O in O_constraints_list:
     avoid(solver3, O[0], O[0] + 0.02, 
                     O[1], O[1] + 0.02, 
@@ -1014,6 +1019,7 @@ for O in O_constraints_list:
                     O[6], O[6] + 0.02, 
                     12.0, 24.0)
 print("Added Avoid Constraints")
+print(f"Time taken:{(time.time() - start0)/60} minutes")
 
 solver3.join_constraint(tube2, solver2, 13)
 tube3 = solver3.find_solution()
